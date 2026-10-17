@@ -1,0 +1,25 @@
+{
+  "name": "beyond-headlines-autocue",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Beyond Headlines // Autocue — Broadcast Teleprompter backed by Neon Postgres",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build": "echo 'Static frontend + Vercel Serverless API ready'"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "teleprompter",
+    "autocue",
+    "beyond-headlines",
+    "neon",
+    "postgres",
+    "vercel"
+  ],
+  "author": "Beyond Headlines",
+  "license": "UNLICENSED"
+}
