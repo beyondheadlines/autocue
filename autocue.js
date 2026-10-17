@@ -1558,11 +1558,8 @@
   function moveTextVertical(direction) {
     const singleLinePx = state.fontSize * LINE_HEIGHT_RATIO;
     const stepPx = Math.round(singleLinePx * 0.9);
-    const effectiveDirection = state.mirrorY
-      ? (direction === 'up' ? 'down' : 'up')
-      : direction;
 
-    if (effectiveDirection === 'up') {
+    if (direction === 'up') {
       state.targetScrollOffset = clamp(state.targetScrollOffset + stepPx, 0, state.maxScroll);
     } else {
       state.targetScrollOffset = clamp(state.targetScrollOffset - stepPx, 0, state.maxScroll);
