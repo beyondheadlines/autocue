@@ -1434,10 +1434,17 @@
     rootStyle.setProperty('--shade-top-height', `${state.shadeTopPercent}%`);
 
     const topShadePx = Math.round((state.shadeTopPercent / 100) * stageHeight);
-    const bottomShadePx = Math.max(80, stageHeight - topShadePx - twoLineWindowPx);
+    const remainingBelowShadePx = Math.max(0, stageHeight - topShadePx - twoLineWindowPx);
 
-    dom.prompterText.style.paddingTop = `${topShadePx + 8}px`;
-    dom.prompterText.style.paddingBottom = `${bottomShadePx + 8}px`;
+    // When flipped vertically (mirrorY: scaleY(-1)), local Y=0 of #prompter-text is at the
+    // bottom of the stage and grows upward, while #focus-shade-container remains in screen space.
+    // Swap top/bottom padding math so the first two lines at scrollOffset=0 always sit inside
+    // the 2-line focus window whether Flip Y is off or on.
+    const startPadPx = state.mirrorY ? remainingBelowShadePx : topShadePx;
+    const endPadPx = state.mirrorY ? topShadePx : remainingBelowShadePx;
+
+    dom.prompterText.style.paddingTop = `${ Math.max(8, startPadPx + 8) }px`;
+    dom.prompterText.style.paddingBottom = `${ Math.max(80, endPadPx + 8) }px`;
 
     const totalTrackHeight = dom.prompterTrack.scrollHeight;
     state.maxScroll = Math.max(0, totalTrackHeight - stageHeight);
@@ -1551,8 +1558,11 @@
   function moveTextVertical(direction) {
     const singleLinePx = state.fontSize * LINE_HEIGHT_RATIO;
     const stepPx = Math.round(singleLinePx * 0.9);
+    const effectiveDirection = state.mirrorY
+      ? (direction === 'up' ? 'down' : 'up')
+      : direction;
 
-    if (direction === 'up') {
+    if (effectiveDirection === 'up') {
       state.targetScrollOffset = clamp(state.targetScrollOffset + stepPx, 0, state.maxScroll);
     } else {
       state.targetScrollOffset = clamp(state.targetScrollOffset - stepPx, 0, state.maxScroll);
@@ -1647,6 +1657,7 @@
     dom.mirrorViewport.classList.toggle('mirror-y', state.mirrorY);
     dom.btnMirrorX.classList.toggle('active', state.mirrorX);
     dom.btnMirrorY.classList.toggle('active', state.mirrorY);
+    updateLayoutAndShadeMetrics(false);
     scheduleSettingsSave();
   }
 
@@ -1751,7 +1762,7 @@
       const maxTopPercent = getMaxShadeTopPercent();
 
       state.shadeTopPercent = clamp(shadeDragStartPercent + deltaPercent, 6, maxTopPercent);
-      document.documentElement.style.setProperty('--shade-top-height', `${state.shadeTopPercent}%`);
+      updateLayoutAndShadeMetrics(false);
     });
 
     const finishShadeDrag = (e) => {
@@ -1853,13 +1864,18 @@
       // so slight touchpad/air-mouse jitter on Android remotes still counts as a click
       if (dx > 28 || Math.abs(dy) > 28) {
         clearHoldTimer();
-        if (e.pointerType === 'touch' && !state.isDraggingShade && !state.isPlaying) {
+        if (e.pointerType === 'touch' && !state.isPlaying) {
           isTouchScrollingStage = true;
         }
       }
 
       if (isTouchScrollingStage && e.pointerType === 'touch') {
-        state.targetScrollOffset = clamp(touchScrollStartOffset - dy * 1.15, 0, state.maxScroll);
+        const dirMultiplier = state.mirrorY ? -1 : 1;
+        state.targetScrollOffset = clamp(
+          touchScrollStartOffset - dy * 1.15 * dirMultiplier,
+          0,
+          state.maxScroll
+        );
         state.scrollOffset = state.targetScrollOffset;
         applyScrollTransform();
       }
@@ -2124,8 +2140,9 @@
     // Mouse wheel manual scroll on prompter stage
     dom.prompterStage.addEventListener('wheel', (e) => {
       e.preventDefault();
+      const dirMultiplier = state.mirrorY ? -1 : 1;
       state.targetScrollOffset = clamp(
-        state.targetScrollOffset + e.deltaY * 0.65,
+        state.targetScrollOffset + e.deltaY * 0.65 * dirMultiplier,
         0,
         state.maxScroll
       );
