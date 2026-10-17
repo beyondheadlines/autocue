@@ -923,7 +923,16 @@
     requestAnimationFrame(animationLoop);
   }
 
+  let lastPlayToggleAt = 0;
+  function triggerPlayToggleDebounced() {
+    const now = performance.now();
+    if (now - lastPlayToggleAt < 220) return;
+    lastPlayToggleAt = now;
+    togglePlay();
+  }
+
   function togglePlay() {
+    lastPlayToggleAt = performance.now();
     if (state.isPlaying) {
       pausePrompter();
     } else {
@@ -932,7 +941,6 @@
   }
 
   function startPrompter() {
-    ensurePwaFullscreen();
     updateLayoutAndShadeMetrics(false);
 
     if (state.maxScroll > 0 && state.scrollOffset >= state.maxScroll - 2) {
@@ -1192,16 +1200,17 @@
     dom.shadeDragHandle.addEventListener('pointercancel', finishShadeDrag);
 
     // ======================================================================
-    // STAGE INTERACTIONS:
-    // 1. Left Click / Tap on stage: Start / Stop teleprompter (same as Enter)
-    // 2. Tap & Hold (420ms) when paused: Focus main content player part
+    // STAGE & REMOTE INTERACTIONS (Desktop Mouse, Android Touchpad/Mouse
+    // Autocue Remote, and Touchscreen):
+    // 1. Left Click / Remote Click / Tap: Start / Stop teleprompter (same as Enter)
+    // 2. Touch Long-Press (900ms) when paused: Focus main content player part
     // ======================================================================
     let holdTimer = null;
+    let pointerDownActive = false;
     let pointerStartX = 0;
     let pointerStartY = 0;
     let touchScrollStartOffset = 0;
     let isTouchScrollingStage = false;
-    let justPausedOnPointerDown = false;
     let holdTriggered = false;
 
     const clearHoldTimer = () => {
@@ -1211,21 +1220,21 @@
       }
     };
 
+    const isInteractiveHudOrModalTarget = (target) => {
+      if (!target || typeof target.closest !== 'function') return false;
+      return Boolean(
+        target.closest(
+          'button, input, select, textarea, a, label, #shade-drag-handle, #progress-bar-track, .modal-card, #view-editor'
+        )
+      );
+    };
+
     dom.prompterStage.addEventListener('pointerdown', (e) => {
-      if (e.button !== undefined && e.button !== 0) return;
+      // Allow primary button (0) or Android remote virtual touchpad/mouse (-1 or 0)
+      if (e.button !== undefined && e.button > 0) return;
       if (state.isDraggingShade || e.target.closest('#shade-drag-handle')) return;
 
-      ensurePwaFullscreen();
-
-      // When the script is in play mode, left-clicking / tapping anywhere on screen pauses it
-      if (state.isPlaying) {
-        justPausedOnPointerDown = true;
-        clearHoldTimer();
-        pausePrompter();
-        return;
-      }
-
-      justPausedOnPointerDown = false;
+      pointerDownActive = true;
       holdTriggered = false;
       pointerStartX = e.clientX;
       pointerStartY = e.clientY;
@@ -1233,13 +1242,18 @@
       isTouchScrollingStage = false;
 
       clearHoldTimer();
-      holdTimer = setTimeout(() => {
-        holdTimer = null;
-        if (!isTouchScrollingStage && !state.isDraggingShade && !state.isPlaying) {
-          holdTriggered = true;
-          toggleMainPlayerFocus();
-        }
-      }, 420);
+
+      // Only start long-press timer for direct finger touch when paused
+      // (Never for mouse/touchpad remotes, which may hold button >400ms on click)
+      if (e.pointerType === 'touch' && !state.isPlaying) {
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          if (pointerDownActive && !isTouchScrollingStage && !state.isDraggingShade && !state.isPlaying) {
+            holdTriggered = true;
+            toggleMainPlayerFocus();
+          }
+        }, 900);
+      }
     });
 
     dom.prompterStage.addEventListener('pointermove', (e) => {
@@ -1247,14 +1261,16 @@
         clearHoldTimer();
         return;
       }
-      if (!holdTimer && !isTouchScrollingStage) return;
+      if (!pointerDownActive) return;
 
       const dx = Math.abs(e.clientX - pointerStartX);
       const dy = e.clientY - pointerStartY;
 
-      if (dx > 10 || Math.abs(dy) > 10) {
+      // Require >28px vertical finger drag before entering manual touch-scroll
+      // so slight touchpad/air-mouse jitter on Android remotes still counts as a click
+      if (dx > 28 || Math.abs(dy) > 28) {
         clearHoldTimer();
-        if (e.pointerType === 'touch' && !state.isDraggingShade) {
+        if (e.pointerType === 'touch' && !state.isDraggingShade && !state.isPlaying) {
           isTouchScrollingStage = true;
         }
       }
@@ -1266,14 +1282,15 @@
       }
     });
 
-    dom.prompterStage.addEventListener('click', (e) => {
-      if (e.button !== undefined && e.button !== 0) return;
+    dom.prompterStage.addEventListener('pointerup', (e) => {
+      clearHoldTimer();
+      if (!pointerDownActive) return;
+      pointerDownActive = false;
+
+      if (e.button !== undefined && e.button > 0) return;
       if (state.justDraggedShade || state.isDraggingShade) return;
       if (e.target.closest('#shade-drag-handle')) return;
-      if (justPausedOnPointerDown) {
-        justPausedOnPointerDown = false;
-        return;
-      }
+
       if (holdTriggered) {
         holdTriggered = false;
         return;
@@ -1282,12 +1299,94 @@
         isTouchScrollingStage = false;
         return;
       }
-      // Left click toggles Start / Stop (same as pressing Enter)
-      togglePlay();
+
+      // Immediately toggle Start/Stop on pointerup (essential on Android when
+      // touch-action: none or Bluetooth touchpad pointers do not synthesize click)
+      triggerPlayToggleDebounced();
     });
 
-    window.addEventListener('pointerup', clearHoldTimer);
-    window.addEventListener('pointercancel', clearHoldTimer);
+    dom.prompterStage.addEventListener('click', (e) => {
+      if (e.button !== undefined && e.button > 0) return;
+      if (state.justDraggedShade || state.isDraggingShade) return;
+      if (e.target.closest('#shade-drag-handle')) return;
+      if (holdTriggered) {
+        holdTriggered = false;
+        return;
+      }
+      if (isTouchScrollingStage) {
+        isTouchScrollingStage = false;
+        return;
+      }
+      // Debounced so if pointerup already toggled, click won't double-toggle
+      triggerPlayToggleDebounced();
+    });
+
+    // Global window click fallback for Android Bluetooth touchpad/mouse remotes
+    // whose cursor is parked at (0,0) over #top-bar or non-button HUD areas
+    window.addEventListener('click', (e) => {
+      if (state.mode !== 'prompter') return;
+      if (e.button !== undefined && e.button > 0) return;
+      if (!dom.modalBackdrop.classList.contains('hidden')) return;
+      if (dom.authorModalBackdrop && !dom.authorModalBackdrop.classList.contains('hidden')) return;
+      if (state.justDraggedShade || state.isDraggingShade) return;
+
+      // When playing, clicking anywhere on screen pauses immediately
+      if (state.isPlaying) {
+        if (!e.target.closest('#btn-play-pause')) {
+          triggerPlayToggleDebounced();
+        }
+        return;
+      }
+
+      // When paused, if the remote clicked anywhere outside interactive buttons/inputs
+      // (e.g. cursor parked at (0,0) on top-bar background), toggle play
+      if (!isInteractiveHudOrModalTarget(e.target)) {
+        triggerPlayToggleDebounced();
+      }
+    });
+
+    window.addEventListener('pointerup', (e) => {
+      const wasHold = holdTriggered;
+      const wasScroll = isTouchScrollingStage;
+      clearHoldTimer();
+      pointerDownActive = false;
+      holdTriggered = false;
+      isTouchScrollingStage = false;
+
+      if (state.mode !== 'prompter') return;
+      if (e.button !== undefined && e.button > 0) return;
+      if (!dom.modalBackdrop.classList.contains('hidden')) return;
+      if (dom.authorModalBackdrop && !dom.authorModalBackdrop.classList.contains('hidden')) return;
+      if (state.justDraggedShade || state.isDraggingShade || wasHold || wasScroll) return;
+
+      if (state.isPlaying) {
+        if (!e.target.closest('#btn-play-pause')) {
+          triggerPlayToggleDebounced();
+        }
+        return;
+      }
+
+      if (!isInteractiveHudOrModalTarget(e.target)) {
+        triggerPlayToggleDebounced();
+      }
+    });
+    window.addEventListener('pointercancel', () => {
+      clearHoldTimer();
+      pointerDownActive = false;
+      holdTriggered = false;
+      isTouchScrollingStage = false;
+    });
+
+    // Keep focus on prompterStage after clicking any toolbar button in prompter mode
+    // so Android remotes don't re-click a focused toolbar button when pressing Play
+    document.querySelectorAll('#top-bar button, #hud-bar button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (state.mode === 'prompter') {
+          btn.blur();
+          dom.prompterStage.focus({ preventScroll: true });
+        }
+      });
+    });
 
     // Mouse wheel manual scroll on prompter stage
     dom.prompterStage.addEventListener('wheel', (e) => {
@@ -1300,7 +1399,7 @@
     }, { passive: false });
 
     // HUD Transport & Progress Scrubber
-    dom.btnPlayPause.addEventListener('click', () => togglePlay());
+    dom.btnPlayPause.addEventListener('click', () => triggerPlayToggleDebounced());
     dom.btnReset.addEventListener('click', resetPrompter);
     dom.btnNudgeUp.addEventListener('click', () => moveTextVertical('up'));
     dom.btnNudgeDown.addEventListener('click', () => moveTextVertical('down'));
@@ -1338,7 +1437,7 @@
     dom.btnMirrorY.addEventListener('click', () => setMirror('y'));
     dom.btnFullscreen.addEventListener('click', toggleFullscreen);
 
-    // KEYBOARD SHORTCUTS (ENTER TO START/STOP, TAB & HOLD TO FOCUS PLAYER, ARROWS)
+    // KEYBOARD & ANDROID REMOTE SHORTCUTS (ENTER, SPACE, MEDIA PLAY/PAUSE, DPAD_CENTER, ARROWS)
     let tabHoldTimer = null;
     let tabHoldTriggered = false;
 
@@ -1380,11 +1479,29 @@
       if (isTyping) return;
 
       if (state.mode === 'prompter') {
+        // Support Android Bluetooth remotes sending DPAD_CENTER (23), ENTER (66/13), or MediaPlayPause (179/85)
+        if (
+          e.key === 'Enter' ||
+          e.key === ' ' ||
+          e.code === 'Space' ||
+          e.code === 'NumpadEnter' ||
+          e.key === 'Select' ||
+          e.key === 'Execute' ||
+          e.key === 'MediaPlayPause' ||
+          e.key === 'MediaPlay' ||
+          e.key === 'MediaPause' ||
+          e.keyCode === 23 ||
+          e.keyCode === 179 ||
+          e.keyCode === 85 ||
+          e.keyCode === 126 ||
+          e.keyCode === 127
+        ) {
+          e.preventDefault();
+          triggerPlayToggleDebounced();
+          return;
+        }
+
         switch (e.key) {
-          case 'Enter':
-            e.preventDefault();
-            togglePlay();
-            break;
           case 'ArrowUp':
             e.preventDefault();
             moveTextVertical('up');
