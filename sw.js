@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bh-autocue-v14';
+const CACHE_NAME = 'bh-autocue-v15';
 const ASSETS = [
   './',
   './index.html',

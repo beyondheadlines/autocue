@@ -611,17 +611,17 @@ body.player-focused .hud-bar {
   gap: 4px;
 }
 
-/* HUD Sliders (Compact Width) */
+/* HUD Sliders (Take Equal Remaining Space & Fill Full Width on Larger Screens) */
 .hud-slider-group {
   flex-direction: column;
   align-items: stretch;
-  gap: 3px;
-  min-width: 72px;
-  flex: 1 1 72px;
-  max-width: 155px;
+  gap: 4px;
+  min-width: 110px;
+  flex: 1 1 0%;
+  max-width: none;
   background: var(--bg-surface);
   border: 1px solid var(--border-hairline);
-  padding: 4px 7px;
+  padding: 5px 10px;
   border-radius: 8px;
 }
 
@@ -629,16 +629,16 @@ body.player-focused .hud-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--fg-secondary);
   white-space: nowrap;
 }
 
 .hud-label kbd {
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 9px;
   padding: 0 3px;
   border: 1px solid var(--border-hairline);
   border-radius: 3px;
@@ -648,7 +648,7 @@ body.player-focused .hud-bar {
 
 .hud-value {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--fg-white);
   font-weight: 600;
 }
@@ -656,18 +656,18 @@ body.player-focused .hud-bar {
 .hud-control-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .step-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 5px;
   background: #0a0a0a;
   color: var(--fg-white);
   border: 1px solid var(--border-hairline);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1;
   display: inline-flex;
@@ -687,8 +687,8 @@ body.player-focused .hud-bar {
 
 .step-btn.toggle-mini {
   width: auto;
-  padding: 0 5px;
-  font-size: 9px;
+  padding: 0 6px;
+  font-size: 9.5px;
 }
 
 .step-btn.toggle-mini.active {
@@ -702,6 +702,7 @@ body.player-focused .hud-bar {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
+  flex: 1 1 auto;
   min-width: 30px;
   height: 4px;
   background: #333333;
@@ -713,8 +714,8 @@ body.player-focused .hud-bar {
 .mono-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: var(--fg-white);
   border: 2px solid var(--bg-black);
@@ -723,8 +724,8 @@ body.player-focused .hud-bar {
 }
 
 .mono-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: var(--fg-white);
   border: 2px solid var(--bg-black);
@@ -732,7 +733,7 @@ body.player-focused .hud-bar {
   cursor: pointer;
 }
 
-/* Toggle Buttons (Mirror X / Flip Y / Edit / Fullscreen — Icon Only in One Line) */
+/* Toggle Buttons (Mirror X / Flip Y / Edit / Fullscreen — Labeled on Large Screens, Icon-Only on Narrow Screens) */
 .hud-group-toggles {
   display: flex;
   align-items: center;
@@ -742,19 +743,23 @@ body.player-focused .hud-bar {
 }
 
 .hud-toggle-btn {
-  width: 36px;
   height: 36px;
-  padding: 0;
+  padding: 0 10px;
   border-radius: 8px;
   background: var(--bg-surface);
   color: var(--fg-white);
   border: 1px solid var(--border-hairline);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.14s ease;
+  white-space: nowrap;
 }
 
 .hud-toggle-btn:hover {
@@ -1589,6 +1594,10 @@ body.player-focused .hud-bar {
     flex: 0 0 32px;
   }
 
+  .hud-toggle-label {
+    display: none;
+  }
+
   .nudge-btn-pair {
     gap: 3px;
   }
@@ -1734,9 +1743,9 @@ body.player-focused .hud-bar {
   }
 
   .hud-slider-group {
-    min-width: 78px;
-    max-width: 128px;
-    flex: 1 1 78px;
+    min-width: 72px;
+    max-width: none;
+    flex: 1 1 0%;
     padding: 3px 6px;
   }
 
@@ -1751,7 +1760,12 @@ body.player-focused .hud-bar {
   .hud-toggle-btn {
     width: 30px;
     height: 30px;
+    padding: 0;
     flex: 0 0 30px;
+  }
+
+  .hud-toggle-label {
+    display: none;
   }
 
   .step-btn {
