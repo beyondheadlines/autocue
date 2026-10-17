@@ -401,55 +401,44 @@
   <!-- ===================================================================== -->
   <!-- MODAL 2: KEYBOARD & TOUCH CONTROLS GUIDE                              -->
   <!-- ===================================================================== -->
+  <!-- MODAL 2: CUSTOMIZABLE CONTROLS & SHORTCUTS DIALOG                     -->
+  <!-- ===================================================================== -->
   <div id="modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal-card">
+    <div class="modal-card shortcuts-modal-card">
       <div class="modal-header">
         <h3 id="modal-title" class="modal-title">CONTROLS &amp; SHORTCUTS</h3>
-        <button type="button" id="btn-close-modal" class="hud-icon-btn" aria-label="Close modal">✕</button>
+        <div class="modal-header-actions">
+          <button type="button" id="btn-reset-shortcuts" class="secondary-mono-btn btn-reset-shortcuts" title="Restore all default shortcuts">
+            Reset Defaults
+          </button>
+          <button type="button" id="btn-close-modal" class="hud-icon-btn" aria-label="Close modal">✕</button>
+        </div>
       </div>
       <div class="modal-body">
-        <div class="shortcuts-grid">
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>Enter</kbd> / <kbd>Left Click</kbd></span>
-            <span class="shortcut-desc">Start / Stop teleprompter scrolling</span>
+        <!-- Live Remote / Key Signal Detector -->
+        <div id="shortcut-live-detector" class="shortcut-live-detector">
+          <div class="detector-top-row">
+            <span class="detector-badge">LIVE INPUT TESTER</span>
+            <span id="detector-status-text" class="detector-status-text">Press any key or remote button to inspect signal…</span>
           </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>Tap &amp; Hold</kbd> / <kbd>Tab &amp; Hold</kbd></span>
-            <span class="shortcut-desc">Focus on main content player (toggle header/footer)</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>↑</kbd> Up Arrow</span>
-            <span class="shortcut-desc">Move text UP a bit</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>↓</kbd> Down Arrow</span>
-            <span class="shortcut-desc">Move text DOWN a bit</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>←</kbd> Left Arrow</span>
-            <span class="shortcut-desc">Decrease scroll speed</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>→</kbd> Right Arrow</span>
-            <span class="shortcut-desc">Increase scroll speed</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>[</kbd> / <kbd>]</kbd></span>
-            <span class="shortcut-desc">Decrease / Increase text column width</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>−</kbd> / <kbd>+</kbd></span>
-            <span class="shortcut-desc">Decrease / Increase font size</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>M</kbd> / <kbd>V</kbd></span>
-            <span class="shortcut-desc">Toggle Horizontal Mirror / Vertical Flip</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>R</kbd> / <kbd>E</kbd> / <kbd>F</kbd></span>
-            <span class="shortcut-desc">Reset to top / Toggle Editor / Fullscreen</span>
+          <div id="detector-detail-row" class="detector-detail-row">
+            Click <strong>+ Add</strong> or <strong>Replace</strong> on any action below, then press any key or remote button to bind it.
           </div>
         </div>
+
+        <!-- Capture Banner (Shown when waiting for a key/button press to bind) -->
+        <div id="shortcut-capture-banner" class="shortcut-capture-banner hidden">
+          <div class="capture-banner-text">
+            <span class="capture-pulse-dot"></span>
+            <span id="shortcut-capture-prompt">Listening… Press any key, mouse button, or remote button now</span>
+          </div>
+          <button type="button" id="btn-cancel-capture" class="secondary-mono-btn btn-cancel-capture">
+            Cancel
+          </button>
+        </div>
+
+        <!-- Customizable Shortcuts List (Rendered by autocue.js) -->
+        <div id="shortcuts-list-container" class="shortcuts-grid"></div>
       </div>
     </div>
   </div>

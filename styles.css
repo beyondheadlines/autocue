@@ -1261,6 +1261,98 @@ body.player-focused .hud-bar {
   flex-wrap: wrap;
 }
 
+.shortcuts-modal-card {
+  max-width: 640px;
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-reset-shortcuts {
+  font-size: 11px;
+  padding: 5px 10px;
+}
+
+.shortcut-live-detector {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.detector-top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detector-badge {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  background: var(--fg-white);
+  color: var(--bg-black);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.detector-status-text {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fg-white);
+  font-weight: 600;
+}
+
+.detector-detail-row {
+  font-size: 11px;
+  color: var(--fg-secondary);
+  line-height: 1.4;
+}
+
+.shortcut-capture-banner {
+  background: var(--fg-white);
+  color: var(--bg-black);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.capture-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.capture-pulse-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bg-black);
+  flex-shrink: 0;
+  animation: syncPulse 0.7s infinite ease-in-out;
+}
+
+.btn-cancel-capture {
+  background: var(--bg-black);
+  color: var(--fg-white);
+  border-color: var(--bg-black);
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
 .shortcuts-grid {
   display: flex;
   flex-direction: column;
@@ -1271,25 +1363,103 @@ body.player-focused .hud-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 8px 10px;
+  border: 1px solid var(--border-hairline);
+  background: #0f0f0f;
+  border-radius: 8px;
   font-size: 12.5px;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.shortcut-keys kbd,
-.shortcut-desc code {
+.shortcut-row.capturing {
+  border-color: var(--fg-white);
+  background: #1b1b1b;
+}
+
+.shortcut-info-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.shortcut-action-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg-white);
+}
+
+.shortcut-keys {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.shortcut-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-family: var(--font-mono);
   font-size: 11px;
   background: var(--bg-surface);
+  color: var(--fg-white);
   border: 1px solid var(--border-strong);
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
 }
 
-.shortcut-desc {
+.shortcut-chip-remove {
+  background: transparent;
+  border: none;
   color: var(--fg-secondary);
-  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.shortcut-chip-remove:hover {
+  background: var(--fg-white);
+  color: var(--bg-black);
+}
+
+.shortcut-empty-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-muted);
+}
+
+.shortcut-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.shortcut-edit-btn {
+  background: var(--bg-surface);
+  color: var(--fg-white);
+  border: 1px solid var(--border-hairline);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.shortcut-edit-btn:hover,
+.shortcut-edit-btn.active {
+  background: var(--fg-white);
+  color: var(--bg-black);
+  border-color: var(--fg-white);
 }
 
 .author-modal-card {

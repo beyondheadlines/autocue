@@ -62,6 +62,7 @@
   };
 
   const AUTHOR_STORAGE_KEY = 'bh_autocue_author_name';
+  const SHORTCUTS_STORAGE_KEY = 'bh_autocue_custom_shortcuts_v1';
 
   // DOM Elements
   const dom = {
@@ -165,7 +166,14 @@
 
     // Shortcuts Modal
     modalBackdrop: document.getElementById('modal-backdrop'),
-    btnCloseModal: document.getElementById('btn-close-modal')
+    btnCloseModal: document.getElementById('btn-close-modal'),
+    btnResetShortcuts: document.getElementById('btn-reset-shortcuts'),
+    detectorStatusText: document.getElementById('detector-status-text'),
+    detectorDetailRow: document.getElementById('detector-detail-row'),
+    shortcutCaptureBanner: document.getElementById('shortcut-capture-banner'),
+    shortcutCapturePrompt: document.getElementById('shortcut-capture-prompt'),
+    btnCancelCapture: document.getElementById('btn-cancel-capture'),
+    shortcutsListContainer: document.getElementById('shortcuts-list-container')
   };
 
   let saveIndicatorTimeout = null;
@@ -206,6 +214,513 @@
       setTimeout(() => {
         dom.inputFirstTimeAuthor?.focus();
       }, 60);
+    }
+  }
+
+  /* ========================================================================
+     0B. CUSTOMIZABLE SHORTCUTS & LIVE REMOTE INPUT DETECTOR
+     ======================================================================== */
+  const SHORTCUT_ACTIONS_META = [
+    {
+      id: 'playPause',
+      title: 'Start / Stop Teleprompter',
+      defaults: [
+        { token: 'Key:Enter', label: 'Enter' },
+        { token: 'Mouse:0', label: 'Left Click' },
+        { token: 'Key: ', label: 'Space' },
+        { token: 'Key:MediaPlayPause', label: 'Media Play/Pause' },
+        { token: 'KeyCode:23', label: 'Remote OK (23)' }
+      ]
+    },
+    {
+      id: 'nudgeUp',
+      title: 'Move Text UP a bit',
+      defaults: [{ token: 'Key:ArrowUp', label: '↑ Up Arrow' }]
+    },
+    {
+      id: 'nudgeDown',
+      title: 'Move Text DOWN a bit',
+      defaults: [{ token: 'Key:ArrowDown', label: '↓ Down Arrow' }]
+    },
+    {
+      id: 'speedDec',
+      title: 'Decrease Scroll Speed',
+      defaults: [{ token: 'Key:ArrowLeft', label: '← Left Arrow' }]
+    },
+    {
+      id: 'speedInc',
+      title: 'Increase Scroll Speed',
+      defaults: [{ token: 'Key:ArrowRight', label: '→ Right Arrow' }]
+    },
+    {
+      id: 'widthDec',
+      title: 'Decrease Text Column Width',
+      defaults: [{ token: 'Key:[', label: '[' }]
+    },
+    {
+      id: 'widthInc',
+      title: 'Increase Text Column Width',
+      defaults: [{ token: 'Key:]', label: ']' }]
+    },
+    {
+      id: 'fontDec',
+      title: 'Decrease Font Size',
+      defaults: [
+        { token: 'Key:-', label: '−' },
+        { token: 'Key:_', label: '_' }
+      ]
+    },
+    {
+      id: 'fontInc',
+      title: 'Increase Font Size',
+      defaults: [
+        { token: 'Key:=', label: '=' },
+        { token: 'Key:+', label: '+' }
+      ]
+    },
+    {
+      id: 'mirrorX',
+      title: 'Toggle Horizontal Mirror',
+      defaults: [{ token: 'Key:m', label: 'M' }]
+    },
+    {
+      id: 'mirrorY',
+      title: 'Toggle Vertical Flip',
+      defaults: [{ token: 'Key:v', label: 'V' }]
+    },
+    {
+      id: 'reset',
+      title: 'Reset to Top of Script',
+      defaults: [{ token: 'Key:r', label: 'R' }]
+    },
+    {
+      id: 'editor',
+      title: 'Toggle Script Studio Editor',
+      defaults: [{ token: 'Key:e', label: 'E' }]
+    },
+    {
+      id: 'fullscreen',
+      title: 'Toggle Fullscreen',
+      defaults: [{ token: 'Key:f', label: 'F' }]
+    },
+    {
+      id: 'focusPlayer',
+      title: 'Focus Main Player (Hide Header/Footer)',
+      defaults: [
+        { token: 'Hold:Touch', label: 'Tap & Hold' },
+        { token: 'Hold:Tab', label: 'Tab & Hold' }
+      ]
+    }
+  ];
+
+  function getDefaultShortcutsMap() {
+    const map = {};
+    SHORTCUT_ACTIONS_META.forEach((action) => {
+      map[action.id] = action.defaults.map((b) => ({ ...b }));
+    });
+    return map;
+  }
+
+  function loadShortcutsMap() {
+    const defaults = getDefaultShortcutsMap();
+    try {
+      const raw = localStorage.getItem(SHORTCUTS_STORAGE_KEY);
+      if (!raw) return defaults;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return defaults;
+      SHORTCUT_ACTIONS_META.forEach((action) => {
+        if (Array.isArray(parsed[action.id])) {
+          defaults[action.id] = parsed[action.id].filter(
+            (b) => b && typeof b.token === 'string' && typeof b.label === 'string'
+          );
+        }
+      });
+      return defaults;
+    } catch {
+      return defaults;
+    }
+  }
+
+  function saveShortcutsMap() {
+    try {
+      localStorage.setItem(SHORTCUTS_STORAGE_KEY, JSON.stringify(state.shortcuts));
+    } catch {
+      // Ignore storage error
+    }
+  }
+
+  state.shortcuts = loadShortcutsMap();
+
+  const captureState = {
+    active: false,
+    actionId: null,
+    mode: 'add', // 'add' | 'replace'
+    startedAt: 0
+  };
+
+  function isShortcutsModalOpen() {
+    return Boolean(dom.modalBackdrop && !dom.modalBackdrop.classList.contains('hidden'));
+  }
+
+  function startShortcutCapture(actionId, mode = 'add') {
+    const meta = SHORTCUT_ACTIONS_META.find((a) => a.id === actionId);
+    if (!meta) return;
+    captureState.active = true;
+    captureState.actionId = actionId;
+    captureState.mode = mode === 'replace' ? 'replace' : 'add';
+    captureState.startedAt = performance.now();
+
+    if (dom.shortcutCaptureBanner && dom.shortcutCapturePrompt) {
+      dom.shortcutCaptureBanner.classList.remove('hidden');
+      const verb = captureState.mode === 'replace' ? 'Replacing' : 'Adding to';
+      dom.shortcutCapturePrompt.textContent = `${verb} "${meta.title}" — Press any key, mouse click, or remote button now…`;
+    }
+    renderShortcutsModal();
+  }
+
+  function cancelShortcutCapture() {
+    captureState.active = false;
+    captureState.actionId = null;
+    if (dom.shortcutCaptureBanner) {
+      dom.shortcutCaptureBanner.classList.add('hidden');
+    }
+    renderShortcutsModal();
+  }
+
+  function removeShortcutBinding(actionId, token) {
+    if (!Array.isArray(state.shortcuts[actionId])) return;
+    state.shortcuts[actionId] = state.shortcuts[actionId].filter((b) => b.token !== token);
+    saveShortcutsMap();
+    renderShortcutsModal();
+  }
+
+  function resetAllShortcutsToDefaults() {
+    state.shortcuts = getDefaultShortcutsMap();
+    saveShortcutsMap();
+    cancelShortcutCapture();
+    if (dom.detectorStatusText) {
+      dom.detectorStatusText.textContent = '✓ Restored all default shortcuts';
+    }
+  }
+
+  function updateLiveDetectorDisplay(signal) {
+    if (!isShortcutsModalOpen() || !signal) return;
+    if (dom.detectorStatusText) {
+      dom.detectorStatusText.textContent = `Detected: ${signal.label} [${signal.token}]`;
+    }
+    if (dom.detectorDetailRow) {
+      dom.detectorDetailRow.textContent = signal.rawSummary || `Token: ${signal.token}`;
+    }
+  }
+
+  function handleIncomingSignalForModal(signal) {
+    if (!isShortcutsModalOpen() || !signal) return false;
+    updateLiveDetectorDisplay(signal);
+
+    if (!captureState.active || !captureState.actionId) {
+      return false;
+    }
+
+    // Ignore the pointer/click event that clicked the "+ Add" or "Replace" button itself
+    if (performance.now() - captureState.startedAt < 180) {
+      return false;
+    }
+
+    const actionId = captureState.actionId;
+    const current = Array.isArray(state.shortcuts[actionId]) ? [...state.shortcuts[actionId]] : [];
+
+    const newBinding = {
+      token: signal.token,
+      label: signal.label,
+      altTokens: Array.isArray(signal.altTokens) ? signal.altTokens : []
+    };
+
+    if (captureState.mode === 'replace') {
+      state.shortcuts[actionId] = [newBinding];
+    } else {
+      const exists = current.some((b) => b.token === newBinding.token);
+      if (!exists) {
+        current.push(newBinding);
+      }
+      state.shortcuts[actionId] = current;
+    }
+
+    saveShortcutsMap();
+    cancelShortcutCapture();
+    return true;
+  }
+
+  function renderShortcutsModal() {
+    if (!dom.shortcutsListContainer) return;
+
+    dom.shortcutsListContainer.innerHTML = SHORTCUT_ACTIONS_META.map((action) => {
+      const bindings = state.shortcuts[action.id] || [];
+      const isCapturingThis = captureState.active && captureState.actionId === action.id;
+
+      const chipsHtml =
+        bindings.length > 0
+          ? bindings
+              .map(
+                (b) => `
+              <span class="shortcut-chip">
+                <span>${escapeHtml(b.label)}</span>
+                <button
+                  type="button"
+                  class="shortcut-chip-remove"
+                  data-remove-action="${escapeHtml(action.id)}"
+                  data-remove-token="${escapeHtml(b.token)}"
+                  title="Remove ${escapeHtml(b.label)}"
+                  aria-label="Remove ${escapeHtml(b.label)}"
+                >×</button>
+              </span>
+            `
+              )
+              .join('')
+          : '<span class="shortcut-empty-label">No shortcut assigned</span>';
+
+      return `
+        <div class="shortcut-row ${isCapturingThis ? 'capturing' : ''}">
+          <div class="shortcut-info-col">
+            <span class="shortcut-action-title">${escapeHtml(action.title)}</span>
+            <div class="shortcut-keys">${chipsHtml}</div>
+          </div>
+          <div class="shortcut-row-actions">
+            <button
+              type="button"
+              class="shortcut-edit-btn ${isCapturingThis && captureState.mode === 'add' ? 'active' : ''}"
+              data-capture-action="${escapeHtml(action.id)}"
+              data-capture-mode="add"
+              title="Add another key or remote button for ${escapeHtml(action.title)}"
+            >+ Add</button>
+            <button
+              type="button"
+              class="shortcut-edit-btn ${isCapturingThis && captureState.mode === 'replace' ? 'active' : ''}"
+              data-capture-action="${escapeHtml(action.id)}"
+              data-capture-mode="replace"
+              title="Replace shortcut for ${escapeHtml(action.title)}"
+            >Replace</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function buildSignalFromKeyboardEvent(e) {
+    const rawKey = e.key || '';
+    const rawCode = e.code || '';
+    const rawKeyCode = Number(e.keyCode || e.which || 0);
+
+    let normalizedKey = rawKey;
+    if (rawKey.length === 1 && rawKey !== ' ') {
+      normalizedKey = rawKey.toLowerCase();
+    }
+
+    let token = '';
+    let label = '';
+    const altTokens = [];
+
+    if (rawKey && rawKey !== 'Unidentified' && rawKey !== 'Dead' && rawKey !== 'Process') {
+      token = `Key:${normalizedKey}`;
+      if (rawKey === ' ') label = 'Space';
+      else if (rawKey === 'ArrowUp') label = '↑ Up Arrow';
+      else if (rawKey === 'ArrowDown') label = '↓ Down Arrow';
+      else if (rawKey === 'ArrowLeft') label = '← Left Arrow';
+      else if (rawKey === 'ArrowRight') label = '→ Right Arrow';
+      else if (rawKey.length === 1) label = rawKey.toUpperCase();
+      else label = rawKey;
+
+      if (rawCode) altTokens.push(`Code:${rawCode}`);
+      if (rawKeyCode > 0) altTokens.push(`KeyCode:${rawKeyCode}`);
+    } else if (rawCode) {
+      token = `Code:${rawCode}`;
+      label = `Key (${rawCode})`;
+      if (rawKeyCode > 0) altTokens.push(`KeyCode:${rawKeyCode}`);
+    } else if (rawKeyCode > 0) {
+      token = `KeyCode:${rawKeyCode}`;
+      label = `Remote Key (${rawKeyCode})`;
+    } else {
+      return null;
+    }
+
+    return {
+      token,
+      label,
+      altTokens,
+      rawSummary: `Type: ${e.type} | key: "${rawKey}" | code: "${rawCode}" | keyCode: ${rawKeyCode}`
+    };
+  }
+
+  function buildSignalFromMouseButton(buttonNum, eventType = 'pointerdown') {
+    const btn = buttonNum === undefined || buttonNum < 0 ? 0 : Number(buttonNum);
+    const names = {
+      0: 'Left Click',
+      1: 'Middle Click',
+      2: 'Right Click / Remote Back',
+      3: 'Mouse Button 4 (Back)',
+      4: 'Mouse Button 5 (Forward)'
+    };
+    const label = names[btn] || `Mouse Button ${btn}`;
+    return {
+      token: `Mouse:${btn}`,
+      label,
+      altTokens: [],
+      rawSummary: `Type: ${eventType} | Mouse/Touchpad Button: ${btn} (${label})`
+    };
+  }
+
+  function findActionMatchingSignal(signal) {
+    if (!signal) return null;
+    const candidateTokens = new Set([signal.token, ...(signal.altTokens || [])]);
+
+    for (const action of SHORTCUT_ACTIONS_META) {
+      const bindings = state.shortcuts[action.id] || [];
+      for (const b of bindings) {
+        if (candidateTokens.has(b.token)) {
+          return action.id;
+        }
+        if (Array.isArray(b.altTokens) && b.altTokens.some((t) => candidateTokens.has(t))) {
+          return action.id;
+        }
+      }
+    }
+    return null;
+  }
+
+  let lastShortcutExecAt = 0;
+  let lastShortcutExecToken = '';
+
+  function executeShortcutAction(actionId, token = '') {
+    const now = performance.now();
+    // Prevent duplicate firing when both keydown and keyup or pointerup and click fire for the same remote button press
+    if (actionId === 'playPause' && now - lastShortcutExecAt < 220) {
+      return true;
+    }
+    if (token && token === lastShortcutExecToken && now - lastShortcutExecAt < 140 && actionId !== 'nudgeUp' && actionId !== 'nudgeDown' && actionId !== 'speedDec' && actionId !== 'speedInc') {
+      return true;
+    }
+    lastShortcutExecAt = now;
+    lastShortcutExecToken = token;
+
+    switch (actionId) {
+      case 'playPause':
+        triggerPlayToggleDebounced();
+        return true;
+      case 'nudgeUp':
+        moveTextVertical('up');
+        return true;
+      case 'nudgeDown':
+        moveTextVertical('down');
+        return true;
+      case 'speedDec':
+        setSpeed(state.speed - 2);
+        return true;
+      case 'speedInc':
+        setSpeed(state.speed + 2);
+        return true;
+      case 'widthDec':
+        setWidthPercent(state.widthPercent - 4);
+        return true;
+      case 'widthInc':
+        setWidthPercent(state.widthPercent + 4);
+        return true;
+      case 'fontDec':
+        setFontSize(state.fontSize - 4);
+        return true;
+      case 'fontInc':
+        setFontSize(state.fontSize + 4);
+        return true;
+      case 'mirrorX':
+        setMirror('x');
+        return true;
+      case 'mirrorY':
+        setMirror('y');
+        return true;
+      case 'reset':
+        resetPrompter();
+        return true;
+      case 'editor':
+        setViewMode('editor');
+        return true;
+      case 'fullscreen':
+        toggleFullscreen();
+        return true;
+      case 'focusPlayer':
+        toggleMainPlayerFocus();
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // Poll Bluetooth Gamepad API (many Android Autocue / Ring / VR remotes connect as HID Gamepads)
+  const prevGamepadState = {};
+  function pollGamepadInputs() {
+    if (!navigator.getGamepads) return;
+    let gamepads;
+    try {
+      gamepads = navigator.getGamepads();
+    } catch {
+      return;
+    }
+    if (!gamepads) return;
+
+    for (let g = 0; g < gamepads.length; g++) {
+      const gp = gamepads[g];
+      if (!gp) continue;
+      const gpKey = `${gp.index}:${gp.id}`;
+      if (!prevGamepadState[gpKey]) {
+        prevGamepadState[gpKey] = { buttons: [], axes: [] };
+      }
+      const prev = prevGamepadState[gpKey];
+
+      // Check buttons
+      for (let b = 0; b < gp.buttons.length; b++) {
+        const pressed = Boolean(gp.buttons[b] && (gp.buttons[b].pressed || gp.buttons[b].value > 0.5));
+        const wasPressed = Boolean(prev.buttons[b]);
+        prev.buttons[b] = pressed;
+
+        if (pressed && !wasPressed) {
+          const signal = {
+            token: `Gamepad:Btn${b}`,
+            label: `Remote/Gamepad Btn ${b}`,
+            altTokens: [],
+            rawSummary: `Gamepad "${gp.id}" | Button ${b} pressed`
+          };
+          if (isShortcutsModalOpen()) {
+            handleIncomingSignalForModal(signal);
+          } else if (state.mode === 'prompter') {
+            const matchedAction = findActionMatchingSignal(signal) || (b === 0 ? 'playPause' : null);
+            if (matchedAction) {
+              executeShortcutAction(matchedAction, signal.token);
+            }
+          }
+        }
+      }
+
+      // Check axes (D-pad / stick on Bluetooth remotes)
+      for (let a = 0; a < gp.axes.length; a++) {
+        const val = Number(gp.axes[a] || 0);
+        const dir = val > 0.65 ? '+' : val < -0.65 ? '-' : '';
+        const prevDir = prev.axes[a] || '';
+        prev.axes[a] = dir;
+
+        if (dir && dir !== prevDir) {
+          const signal = {
+            token: `Gamepad:Axis${a}${dir}`,
+            label: `Remote/Gamepad Axis ${a}${dir}`,
+            altTokens: [],
+            rawSummary: `Gamepad "${gp.id}" | Axis ${a} (${val.toFixed(2)})`
+          };
+          if (isShortcutsModalOpen()) {
+            handleIncomingSignalForModal(signal);
+          } else if (state.mode === 'prompter') {
+            const matchedAction = findActionMatchingSignal(signal);
+            if (matchedAction) {
+              executeShortcutAction(matchedAction, signal.token);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -894,6 +1409,8 @@
     const dt = Math.min(0.064, (timestamp - state.lastFrameTime) / 1000);
     state.lastFrameTime = timestamp;
 
+    pollGamepadInputs();
+
     let changed = false;
 
     if (state.isPlaying) {
@@ -1287,7 +1804,6 @@
       if (!pointerDownActive) return;
       pointerDownActive = false;
 
-      if (e.button !== undefined && e.button > 0) return;
       if (state.justDraggedShade || state.isDraggingShade) return;
       if (e.target.closest('#shade-drag-handle')) return;
 
@@ -1300,13 +1816,16 @@
         return;
       }
 
-      // Immediately toggle Start/Stop on pointerup (essential on Android when
-      // touch-action: none or Bluetooth touchpad pointers do not synthesize click)
-      triggerPlayToggleDebounced();
+      const mouseSignal = buildSignalFromMouseButton(e.button, 'pointerup');
+      const matchedAction = findActionMatchingSignal(mouseSignal);
+      if (matchedAction) {
+        executeShortcutAction(matchedAction, mouseSignal.token);
+      } else if (state.isPlaying && (e.button === undefined || e.button <= 0)) {
+        triggerPlayToggleDebounced();
+      }
     });
 
     dom.prompterStage.addEventListener('click', (e) => {
-      if (e.button !== undefined && e.button > 0) return;
       if (state.justDraggedShade || state.isDraggingShade) return;
       if (e.target.closest('#shade-drag-handle')) return;
       if (holdTriggered) {
@@ -1317,16 +1836,33 @@
         isTouchScrollingStage = false;
         return;
       }
-      // Debounced so if pointerup already toggled, click won't double-toggle
-      triggerPlayToggleDebounced();
+      const mouseSignal = buildSignalFromMouseButton(e.button, 'click');
+      const matchedAction = findActionMatchingSignal(mouseSignal);
+      if (matchedAction) {
+        executeShortcutAction(matchedAction, mouseSignal.token);
+      } else if (state.isPlaying && (e.button === undefined || e.button <= 0)) {
+        triggerPlayToggleDebounced();
+      }
     });
 
-    // Global window click fallback for Android Bluetooth touchpad/mouse remotes
-    // whose cursor is parked at (0,0) over #top-bar or non-button HUD areas
+    // Global window click / pointerup / contextmenu fallback for Android Bluetooth
+    // remotes and custom mouse button bindings
     window.addEventListener('click', (e) => {
+      if (isShortcutsModalOpen()) {
+        // Ignore clicks on modal action buttons themselves when capturing
+        if (
+          e.target.closest(
+            '.shortcut-edit-btn, .shortcut-chip-remove, #btn-cancel-capture, #btn-reset-shortcuts, #btn-close-modal'
+          )
+        ) {
+          return;
+        }
+        const sig = buildSignalFromMouseButton(e.button, 'click');
+        handleIncomingSignalForModal(sig);
+        return;
+      }
+
       if (state.mode !== 'prompter') return;
-      if (e.button !== undefined && e.button > 0) return;
-      if (!dom.modalBackdrop.classList.contains('hidden')) return;
       if (dom.authorModalBackdrop && !dom.authorModalBackdrop.classList.contains('hidden')) return;
       if (state.justDraggedShade || state.isDraggingShade) return;
 
@@ -1338,10 +1874,12 @@
         return;
       }
 
-      // When paused, if the remote clicked anywhere outside interactive buttons/inputs
-      // (e.g. cursor parked at (0,0) on top-bar background), toggle play
       if (!isInteractiveHudOrModalTarget(e.target)) {
-        triggerPlayToggleDebounced();
+        const sig = buildSignalFromMouseButton(e.button, 'click');
+        const matched = findActionMatchingSignal(sig);
+        if (matched) {
+          executeShortcutAction(matched, sig.token);
+        }
       }
     });
 
@@ -1353,9 +1891,20 @@
       holdTriggered = false;
       isTouchScrollingStage = false;
 
+      if (isShortcutsModalOpen()) {
+        if (
+          e.target.closest(
+            '.shortcut-edit-btn, .shortcut-chip-remove, #btn-cancel-capture, #btn-reset-shortcuts, #btn-close-modal'
+          )
+        ) {
+          return;
+        }
+        const sig = buildSignalFromMouseButton(e.button, 'pointerup');
+        handleIncomingSignalForModal(sig);
+        return;
+      }
+
       if (state.mode !== 'prompter') return;
-      if (e.button !== undefined && e.button > 0) return;
-      if (!dom.modalBackdrop.classList.contains('hidden')) return;
       if (dom.authorModalBackdrop && !dom.authorModalBackdrop.classList.contains('hidden')) return;
       if (state.justDraggedShade || state.isDraggingShade || wasHold || wasScroll) return;
 
@@ -1367,9 +1916,48 @@
       }
 
       if (!isInteractiveHudOrModalTarget(e.target)) {
-        triggerPlayToggleDebounced();
+        const sig = buildSignalFromMouseButton(e.button, 'pointerup');
+        const matched = findActionMatchingSignal(sig);
+        if (matched) {
+          executeShortcutAction(matched, sig.token);
+        }
       }
     });
+
+    // Support Right-Click / Android Remote Back Button (Mouse:2 / contextmenu) and Aux Buttons (Mouse:1,3,4)
+    window.addEventListener('contextmenu', (e) => {
+      const sig = buildSignalFromMouseButton(2, 'contextmenu');
+      if (isShortcutsModalOpen()) {
+        e.preventDefault();
+        handleIncomingSignalForModal(sig);
+        return;
+      }
+      if (state.mode === 'prompter') {
+        const matched = findActionMatchingSignal(sig);
+        if (matched) {
+          e.preventDefault();
+          executeShortcutAction(matched, sig.token);
+        }
+      }
+    });
+
+    window.addEventListener('auxclick', (e) => {
+      if (e.button === 0) return;
+      const sig = buildSignalFromMouseButton(e.button, 'auxclick');
+      if (isShortcutsModalOpen()) {
+        e.preventDefault();
+        handleIncomingSignalForModal(sig);
+        return;
+      }
+      if (state.mode === 'prompter') {
+        const matched = findActionMatchingSignal(sig);
+        if (matched) {
+          e.preventDefault();
+          executeShortcutAction(matched, sig.token);
+        }
+      }
+    });
+
     window.addEventListener('pointercancel', () => {
       clearHoldTimer();
       pointerDownActive = false;
@@ -1437,19 +2025,34 @@
     dom.btnMirrorY.addEventListener('click', () => setMirror('y'));
     dom.btnFullscreen.addEventListener('click', toggleFullscreen);
 
-    // KEYBOARD & ANDROID REMOTE SHORTCUTS (ENTER, SPACE, MEDIA PLAY/PAUSE, DPAD_CENTER, ARROWS)
+    // KEYBOARD & ANDROID REMOTE SHORTCUTS (CUSTOMIZABLE + LIVE CAPTURE)
     let tabHoldTimer = null;
     let tabHoldTriggered = false;
+    let lastKeyDownHandledCode = '';
+    let lastKeyDownHandledAt = 0;
 
     window.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
       const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable;
 
-      if (e.key === 'Escape') {
-        if (!dom.modalBackdrop.classList.contains('hidden')) {
+      // If Controls & Shortcuts Modal is open, capture or inspect any pressed key/button
+      if (isShortcutsModalOpen()) {
+        if (e.key === 'Escape' && !captureState.active) {
           dom.modalBackdrop.classList.add('hidden');
           return;
         }
+        e.preventDefault();
+        e.stopPropagation();
+        const sig = buildSignalFromKeyboardEvent(e);
+        if (sig) {
+          lastKeyDownHandledCode = sig.token;
+          lastKeyDownHandledAt = performance.now();
+          handleIncomingSignalForModal(sig);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
         if (state.playerFocused) {
           state.playerFocused = false;
           document.body.classList.remove('player-focused');
@@ -1458,115 +2061,45 @@
       }
 
       if (e.key === 'Tab' && state.mode === 'prompter') {
-        if (e.repeat) {
-          e.preventDefault();
-          if (!tabHoldTriggered) {
-            tabHoldTriggered = true;
-            clearTimeout(tabHoldTimer);
-            toggleMainPlayerFocus();
+        const hasTabHoldBinding = (state.shortcuts.focusPlayer || []).some((b) => b.token === 'Hold:Tab');
+        if (hasTabHoldBinding) {
+          if (e.repeat) {
+            e.preventDefault();
+            if (!tabHoldTriggered) {
+              tabHoldTriggered = true;
+              clearTimeout(tabHoldTimer);
+              toggleMainPlayerFocus();
+            }
+            return;
           }
-          return;
-        }
-        if (!tabHoldTimer) {
-          tabHoldTriggered = false;
-          tabHoldTimer = setTimeout(() => {
-            tabHoldTriggered = true;
-            toggleMainPlayerFocus();
-          }, 380);
+          if (!tabHoldTimer) {
+            tabHoldTriggered = false;
+            tabHoldTimer = setTimeout(() => {
+              tabHoldTriggered = true;
+              toggleMainPlayerFocus();
+            }, 380);
+          }
         }
       }
 
       if (isTyping) return;
 
       if (state.mode === 'prompter') {
-        // Support Android Bluetooth remotes sending DPAD_CENTER (23), ENTER (66/13), or MediaPlayPause (179/85)
-        if (
-          e.key === 'Enter' ||
-          e.key === ' ' ||
-          e.code === 'Space' ||
-          e.code === 'NumpadEnter' ||
-          e.key === 'Select' ||
-          e.key === 'Execute' ||
-          e.key === 'MediaPlayPause' ||
-          e.key === 'MediaPlay' ||
-          e.key === 'MediaPause' ||
-          e.keyCode === 23 ||
-          e.keyCode === 179 ||
-          e.keyCode === 85 ||
-          e.keyCode === 126 ||
-          e.keyCode === 127
-        ) {
+        if (e.key === '?') {
           e.preventDefault();
-          triggerPlayToggleDebounced();
+          openShortcutsModal();
           return;
         }
 
-        switch (e.key) {
-          case 'ArrowUp':
-            e.preventDefault();
-            moveTextVertical('up');
-            break;
-          case 'ArrowDown':
-            e.preventDefault();
-            moveTextVertical('down');
-            break;
-          case 'ArrowLeft':
-            e.preventDefault();
-            setSpeed(state.speed - 2);
-            break;
-          case 'ArrowRight':
-            e.preventDefault();
-            setSpeed(state.speed + 2);
-            break;
-          case '[':
-            e.preventDefault();
-            setWidthPercent(state.widthPercent - 4);
-            break;
-          case ']':
-            e.preventDefault();
-            setWidthPercent(state.widthPercent + 4);
-            break;
-          case '-':
-          case '_':
-            e.preventDefault();
-            setFontSize(state.fontSize - 4);
-            break;
-          case '=':
-          case '+':
-            e.preventDefault();
-            setFontSize(state.fontSize + 4);
-            break;
-          case 'm':
-          case 'M':
-            e.preventDefault();
-            setMirror('x');
-            break;
-          case 'v':
-          case 'V':
-            e.preventDefault();
-            setMirror('y');
-            break;
-          case 'r':
-          case 'R':
-            e.preventDefault();
-            resetPrompter();
-            break;
-          case 'e':
-          case 'E':
-            e.preventDefault();
-            setViewMode('editor');
-            break;
-          case 'f':
-          case 'F':
-            e.preventDefault();
-            toggleFullscreen();
-            break;
-          case '?':
-            e.preventDefault();
-            dom.modalBackdrop.classList.toggle('hidden');
-            break;
-          default:
-            break;
+        const sig = buildSignalFromKeyboardEvent(e);
+        if (!sig) return;
+
+        const matchedAction = findActionMatchingSignal(sig);
+        if (matchedAction) {
+          e.preventDefault();
+          lastKeyDownHandledCode = sig.token;
+          lastKeyDownHandledAt = performance.now();
+          executeShortcutAction(matchedAction, sig.token);
         }
       }
     });
@@ -1576,6 +2109,35 @@
         clearTimeout(tabHoldTimer);
         tabHoldTimer = null;
         tabHoldTriggered = false;
+      }
+
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable;
+      if (isTyping) return;
+
+      // Some Android Bluetooth remotes ONLY emit keyup (without keydown) for shutter/media keys!
+      const sig = buildSignalFromKeyboardEvent(e);
+      if (!sig) return;
+
+      if (
+        sig.token === lastKeyDownHandledCode &&
+        performance.now() - lastKeyDownHandledAt < 500
+      ) {
+        return;
+      }
+
+      if (isShortcutsModalOpen()) {
+        e.preventDefault();
+        handleIncomingSignalForModal(sig);
+        return;
+      }
+
+      if (state.mode === 'prompter') {
+        const matchedAction = findActionMatchingSignal(sig);
+        if (matchedAction) {
+          e.preventDefault();
+          executeShortcutAction(matchedAction, sig.token);
+        }
       }
     });
 
@@ -1709,15 +2271,62 @@
       URL.revokeObjectURL(url);
     });
 
-    // Shortcuts Modal
-    dom.btnShortcuts.addEventListener('click', () => {
+    // Customizable Controls & Shortcuts Modal
+    const openShortcutsModal = () => {
+      cancelShortcutCapture();
+      renderShortcutsModal();
       dom.modalBackdrop.classList.remove('hidden');
+    };
+
+    dom.btnShortcuts.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openShortcutsModal();
     });
-    dom.btnCloseModal.addEventListener('click', () => {
+
+    dom.btnCloseModal.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cancelShortcutCapture();
       dom.modalBackdrop.classList.add('hidden');
     });
+
+    if (dom.btnResetShortcuts) {
+      dom.btnResetShortcuts.addEventListener('click', (e) => {
+        e.stopPropagation();
+        resetAllShortcutsToDefaults();
+      });
+    }
+
+    if (dom.btnCancelCapture) {
+      dom.btnCancelCapture.addEventListener('click', (e) => {
+        e.stopPropagation();
+        cancelShortcutCapture();
+      });
+    }
+
+    if (dom.shortcutsListContainer) {
+      dom.shortcutsListContainer.addEventListener('click', (e) => {
+        const removeBtn = e.target.closest('[data-remove-action]');
+        if (removeBtn) {
+          e.stopPropagation();
+          const actionId = removeBtn.getAttribute('data-remove-action');
+          const token = removeBtn.getAttribute('data-remove-token');
+          removeShortcutBinding(actionId, token);
+          return;
+        }
+
+        const captureBtn = e.target.closest('[data-capture-action]');
+        if (captureBtn) {
+          e.stopPropagation();
+          const actionId = captureBtn.getAttribute('data-capture-action');
+          const mode = captureBtn.getAttribute('data-capture-mode') || 'add';
+          startShortcutCapture(actionId, mode);
+        }
+      });
+    }
+
     dom.modalBackdrop.addEventListener('click', (e) => {
-      if (e.target === dom.modalBackdrop) {
+      if (e.target === dom.modalBackdrop && !captureState.active) {
+        cancelShortcutCapture();
         dom.modalBackdrop.classList.add('hidden');
       }
     });
@@ -2203,6 +2812,7 @@
     }
 
     syncControlsFromState();
+    renderShortcutsModal();
     bindEvents();
     registerServiceWorker();
 
