@@ -586,16 +586,73 @@
     return null;
   }
 
+  const REPEATABLE_SHORTCUT_ACTIONS = new Set([
+    'nudgeUp',
+    'nudgeDown',
+    'speedDec',
+    'speedInc',
+    'widthDec',
+    'widthInc',
+    'fontDec',
+    'fontInc'
+  ]);
+
   let lastShortcutExecAt = 0;
   let lastShortcutExecToken = '';
 
-  function executeShortcutAction(actionId, token = '') {
+  // Active press-and-hold repeat timers keyed by input token
+  const activeHoldRepeats = new Map();
+
+  function isRepeatableAction(actionId) {
+    return REPEATABLE_SHORTCUT_ACTIONS.has(actionId);
+  }
+
+  function startHoldRepeat(actionId, token) {
+    if (!isRepeatableAction(actionId) || !token) return;
+    if (activeHoldRepeats.has(token)) return;
+
+    const entry = {
+      actionId,
+      delayTimer: null,
+      intervalTimer: null
+    };
+
+    entry.delayTimer = setTimeout(() => {
+      entry.delayTimer = null;
+      entry.intervalTimer = setInterval(() => {
+        if (state.mode !== 'prompter' || isShortcutsModalOpen()) {
+          stopHoldRepeat(token);
+          return;
+        }
+        executeShortcutAction(actionId, token, true);
+      }, 70);
+    }, 240);
+
+    activeHoldRepeats.set(token, entry);
+  }
+
+  function stopHoldRepeat(token) {
+    if (!token) return;
+    const entry = activeHoldRepeats.get(token);
+    if (!entry) return;
+    if (entry.delayTimer) clearTimeout(entry.delayTimer);
+    if (entry.intervalTimer) clearInterval(entry.intervalTimer);
+    activeHoldRepeats.delete(token);
+  }
+
+  function stopAllHoldRepeats() {
+    for (const token of activeHoldRepeats.keys()) {
+      stopHoldRepeat(token);
+    }
+  }
+
+  function executeShortcutAction(actionId, token = '', isRepeatTick = false) {
     const now = performance.now();
     // Prevent duplicate firing when both keydown and keyup or pointerup and click fire for the same remote button press
     if (actionId === 'playPause' && now - lastShortcutExecAt < 220) {
       return true;
     }
-    if (token && token === lastShortcutExecToken && now - lastShortcutExecAt < 140 && actionId !== 'nudgeUp' && actionId !== 'nudgeDown' && actionId !== 'speedDec' && actionId !== 'speedInc') {
+    if (!isRepeatTick && !isRepeatableAction(actionId) && token && token === lastShortcutExecToken && now - lastShortcutExecAt < 140) {
       return true;
     }
     lastShortcutExecAt = now;
@@ -673,15 +730,16 @@
       }
       const prev = prevGamepadState[gpKey];
 
-      // Check buttons
+      // Check buttons (supports press-and-hold auto-repeat)
       for (let b = 0; b < gp.buttons.length; b++) {
         const pressed = Boolean(gp.buttons[b] && (gp.buttons[b].pressed || gp.buttons[b].value > 0.5));
         const wasPressed = Boolean(prev.buttons[b]);
         prev.buttons[b] = pressed;
+        const btnToken = `Gamepad:Btn${b}`;
 
         if (pressed && !wasPressed) {
           const signal = {
-            token: `Gamepad:Btn${b}`,
+            token: btnToken,
             label: `Remote/Gamepad Btn ${b}`,
             altTokens: [],
             rawSummary: `Gamepad "${gp.id}" | Button ${b} pressed`
@@ -692,17 +750,24 @@
             const matchedAction = findActionMatchingSignal(signal) || (b === 0 ? 'playPause' : null);
             if (matchedAction) {
               executeShortcutAction(matchedAction, signal.token);
+              startHoldRepeat(matchedAction, signal.token);
             }
           }
+        } else if (!pressed && wasPressed) {
+          stopHoldRepeat(btnToken);
         }
       }
 
-      // Check axes (D-pad / stick on Bluetooth remotes)
+      // Check axes (D-pad / stick on Bluetooth remotes, supports press-and-hold auto-repeat)
       for (let a = 0; a < gp.axes.length; a++) {
         const val = Number(gp.axes[a] || 0);
         const dir = val > 0.65 ? '+' : val < -0.65 ? '-' : '';
         const prevDir = prev.axes[a] || '';
         prev.axes[a] = dir;
+
+        if (prevDir && prevDir !== dir) {
+          stopHoldRepeat(`Gamepad:Axis${a}${prevDir}`);
+        }
 
         if (dir && dir !== prevDir) {
           const signal = {
@@ -717,6 +782,7 @@
             const matchedAction = findActionMatchingSignal(signal);
             if (matchedAction) {
               executeShortcutAction(matchedAction, signal.token);
+              startHoldRepeat(matchedAction, signal.token);
             }
           }
         }
@@ -1817,9 +1883,12 @@
       }
 
       const mouseSignal = buildSignalFromMouseButton(e.button, 'pointerup');
+      stopHoldRepeat(mouseSignal.token);
       const matchedAction = findActionMatchingSignal(mouseSignal);
       if (matchedAction) {
-        executeShortcutAction(matchedAction, mouseSignal.token);
+        if (!isRepeatableAction(matchedAction)) {
+          executeShortcutAction(matchedAction, mouseSignal.token);
+        }
       } else if (state.isPlaying && (e.button === undefined || e.button <= 0)) {
         triggerPlayToggleDebounced();
       }
@@ -1837,11 +1906,67 @@
         return;
       }
       const mouseSignal = buildSignalFromMouseButton(e.button, 'click');
+      stopHoldRepeat(mouseSignal.token);
       const matchedAction = findActionMatchingSignal(mouseSignal);
       if (matchedAction) {
-        executeShortcutAction(matchedAction, mouseSignal.token);
+        if (!isRepeatableAction(matchedAction)) {
+          executeShortcutAction(matchedAction, mouseSignal.token);
+        }
       } else if (state.isPlaying && (e.button === undefined || e.button <= 0)) {
         triggerPlayToggleDebounced();
+      }
+    });
+
+    // Helper to bind press-and-hold multi-input repeat on HUD step buttons
+    const bindHoldableHudButton = (btnEl, actionId, stepFn) => {
+      if (!btnEl) return;
+      const holdToken = `HUD:${actionId}`;
+      let handledByPointerDown = false;
+
+      btnEl.addEventListener('pointerdown', (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        e.preventDefault();
+        handledByPointerDown = true;
+        stepFn();
+        startHoldRepeat(actionId, holdToken);
+      });
+
+      const stopHudHold = () => {
+        stopHoldRepeat(holdToken);
+      };
+
+      btnEl.addEventListener('pointerup', stopHudHold);
+      btnEl.addEventListener('pointerleave', stopHudHold);
+      btnEl.addEventListener('pointercancel', stopHudHold);
+
+      btnEl.addEventListener('click', (e) => {
+        stopHudHold();
+        if (handledByPointerDown) {
+          handledByPointerDown = false;
+          return;
+        }
+        stepFn();
+      });
+    };
+
+    // Track mouse buttons & keyboard tokens that started a press-and-hold action
+    const heldKeyboardTokens = new Set();
+    const heldMouseTokens = new Set();
+    let lastMouseRepeatableHandledAt = 0;
+
+    window.addEventListener('pointerdown', (e) => {
+      if (isShortcutsModalOpen()) return;
+      if (state.mode !== 'prompter') return;
+      if (dom.authorModalBackdrop && !dom.authorModalBackdrop.classList.contains('hidden')) return;
+      if (isInteractiveHudOrModalTarget(e.target)) return;
+
+      const sig = buildSignalFromMouseButton(e.button, 'pointerdown');
+      const matched = findActionMatchingSignal(sig);
+      if (matched && isRepeatableAction(matched)) {
+        heldMouseTokens.add(sig.token);
+        lastMouseRepeatableHandledAt = performance.now();
+        executeShortcutAction(matched, sig.token);
+        startHoldRepeat(matched, sig.token);
       }
     });
 
@@ -1862,6 +1987,13 @@
         return;
       }
 
+      const sig = buildSignalFromMouseButton(e.button, 'click');
+      stopHoldRepeat(sig.token);
+      if (heldMouseTokens.has(sig.token) || performance.now() - lastMouseRepeatableHandledAt < 450) {
+        heldMouseTokens.delete(sig.token);
+        return;
+      }
+
       if (state.mode !== 'prompter') return;
       if (dom.authorModalBackdrop && !dom.authorModalBackdrop.classList.contains('hidden')) return;
       if (state.justDraggedShade || state.isDraggingShade) return;
@@ -1875,7 +2007,6 @@
       }
 
       if (!isInteractiveHudOrModalTarget(e.target)) {
-        const sig = buildSignalFromMouseButton(e.button, 'click');
         const matched = findActionMatchingSignal(sig);
         if (matched) {
           executeShortcutAction(matched, sig.token);
@@ -1891,6 +2022,9 @@
       holdTriggered = false;
       isTouchScrollingStage = false;
 
+      const sig = buildSignalFromMouseButton(e.button, 'pointerup');
+      stopHoldRepeat(sig.token);
+
       if (isShortcutsModalOpen()) {
         if (
           e.target.closest(
@@ -1899,8 +2033,13 @@
         ) {
           return;
         }
-        const sig = buildSignalFromMouseButton(e.button, 'pointerup');
         handleIncomingSignalForModal(sig);
+        return;
+      }
+
+      if (heldMouseTokens.has(sig.token)) {
+        lastMouseRepeatableHandledAt = performance.now();
+        heldMouseTokens.delete(sig.token);
         return;
       }
 
@@ -1916,7 +2055,6 @@
       }
 
       if (!isInteractiveHudOrModalTarget(e.target)) {
-        const sig = buildSignalFromMouseButton(e.button, 'pointerup');
         const matched = findActionMatchingSignal(sig);
         if (matched) {
           executeShortcutAction(matched, sig.token);
@@ -1936,7 +2074,9 @@
         const matched = findActionMatchingSignal(sig);
         if (matched) {
           e.preventDefault();
-          executeShortcutAction(matched, sig.token);
+          if (!isRepeatableAction(matched)) {
+            executeShortcutAction(matched, sig.token);
+          }
         }
       }
     });
@@ -1944,6 +2084,7 @@
     window.addEventListener('auxclick', (e) => {
       if (e.button === 0) return;
       const sig = buildSignalFromMouseButton(e.button, 'auxclick');
+      stopHoldRepeat(sig.token);
       if (isShortcutsModalOpen()) {
         e.preventDefault();
         handleIncomingSignalForModal(sig);
@@ -1953,7 +2094,9 @@
         const matched = findActionMatchingSignal(sig);
         if (matched) {
           e.preventDefault();
-          executeShortcutAction(matched, sig.token);
+          if (!isRepeatableAction(matched)) {
+            executeShortcutAction(matched, sig.token);
+          }
         }
       }
     });
@@ -1963,6 +2106,8 @@
       pointerDownActive = false;
       holdTriggered = false;
       isTouchScrollingStage = false;
+      heldMouseTokens.clear();
+      stopAllHoldRepeats();
     });
 
     // Keep focus on prompterStage after clicking any toolbar button in prompter mode
@@ -1989,8 +2134,8 @@
     // HUD Transport & Progress Scrubber
     dom.btnPlayPause.addEventListener('click', () => triggerPlayToggleDebounced());
     dom.btnReset.addEventListener('click', resetPrompter);
-    dom.btnNudgeUp.addEventListener('click', () => moveTextVertical('up'));
-    dom.btnNudgeDown.addEventListener('click', () => moveTextVertical('down'));
+    bindHoldableHudButton(dom.btnNudgeUp, 'nudgeUp', () => moveTextVertical('up'));
+    bindHoldableHudButton(dom.btnNudgeDown, 'nudgeDown', () => moveTextVertical('down'));
 
     dom.progressBarTrack.addEventListener('click', (e) => {
       const rect = dom.progressBarTrack.getBoundingClientRect();
@@ -2002,18 +2147,18 @@
 
     // HUD Speed Controls
     dom.sliderSpeed.addEventListener('input', (e) => setSpeed(Number(e.target.value)));
-    dom.btnSpeedDec.addEventListener('click', () => setSpeed(state.speed - 2));
-    dom.btnSpeedInc.addEventListener('click', () => setSpeed(state.speed + 2));
+    bindHoldableHudButton(dom.btnSpeedDec, 'speedDec', () => setSpeed(state.speed - 2));
+    bindHoldableHudButton(dom.btnSpeedInc, 'speedInc', () => setSpeed(state.speed + 2));
 
     // HUD Font Size Controls
     dom.sliderFontsize.addEventListener('input', (e) => setFontSize(Number(e.target.value)));
-    dom.btnFontDec.addEventListener('click', () => setFontSize(state.fontSize - 4));
-    dom.btnFontInc.addEventListener('click', () => setFontSize(state.fontSize + 4));
+    bindHoldableHudButton(dom.btnFontDec, 'fontDec', () => setFontSize(state.fontSize - 4));
+    bindHoldableHudButton(dom.btnFontInc, 'fontInc', () => setFontSize(state.fontSize + 4));
 
     // HUD Width Controls
     dom.sliderWidth.addEventListener('input', (e) => setWidthPercent(Number(e.target.value)));
-    dom.btnWidthDec.addEventListener('click', () => setWidthPercent(state.widthPercent - 4));
-    dom.btnWidthInc.addEventListener('click', () => setWidthPercent(state.widthPercent + 4));
+    bindHoldableHudButton(dom.btnWidthDec, 'widthDec', () => setWidthPercent(state.widthPercent - 4));
+    bindHoldableHudButton(dom.btnWidthInc, 'widthInc', () => setWidthPercent(state.widthPercent + 4));
 
     // HUD 2-Line Shade Controls
     dom.sliderShade.addEventListener('input', (e) => setShadeOpacity(Number(e.target.value)));
@@ -2025,7 +2170,7 @@
     dom.btnMirrorY.addEventListener('click', () => setMirror('y'));
     dom.btnFullscreen.addEventListener('click', toggleFullscreen);
 
-    // KEYBOARD & ANDROID REMOTE SHORTCUTS (CUSTOMIZABLE + LIVE CAPTURE)
+    // KEYBOARD & ANDROID REMOTE SHORTCUTS (CUSTOMIZABLE + LIVE CAPTURE + PRESS-AND-HOLD REPEAT)
     let tabHoldTimer = null;
     let tabHoldTriggered = false;
     let lastKeyDownHandledCode = '';
@@ -2047,6 +2192,7 @@
         if (sig) {
           lastKeyDownHandledCode = sig.token;
           lastKeyDownHandledAt = performance.now();
+          heldKeyboardTokens.add(sig.token);
           handleIncomingSignalForModal(sig);
         }
         return;
@@ -2099,7 +2245,19 @@
           e.preventDefault();
           lastKeyDownHandledCode = sig.token;
           lastKeyDownHandledAt = performance.now();
-          executeShortcutAction(matchedAction, sig.token);
+          heldKeyboardTokens.add(sig.token);
+
+          if (isRepeatableAction(matchedAction)) {
+            if (!e.repeat) {
+              executeShortcutAction(matchedAction, sig.token);
+              startHoldRepeat(matchedAction, sig.token);
+            } else if (!activeHoldRepeats.has(sig.token)) {
+              executeShortcutAction(matchedAction, sig.token);
+              startHoldRepeat(matchedAction, sig.token);
+            }
+          } else if (!e.repeat) {
+            executeShortcutAction(matchedAction, sig.token);
+          }
         }
       }
     });
@@ -2111,12 +2269,18 @@
         tabHoldTriggered = false;
       }
 
+      const sig = buildSignalFromKeyboardEvent(e);
+      if (sig) {
+        stopHoldRepeat(sig.token);
+        if (heldKeyboardTokens.has(sig.token)) {
+          heldKeyboardTokens.delete(sig.token);
+          return;
+        }
+      }
+
       const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
       const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable;
       if (isTyping) return;
-
-      // Some Android Bluetooth remotes ONLY emit keyup (without keydown) for shutter/media keys!
-      const sig = buildSignalFromKeyboardEvent(e);
       if (!sig) return;
 
       if (
@@ -2132,12 +2296,27 @@
         return;
       }
 
+      // Fallback for Android Bluetooth remotes that ONLY emit keyup (without keydown)
       if (state.mode === 'prompter') {
         const matchedAction = findActionMatchingSignal(sig);
         if (matchedAction) {
           e.preventDefault();
           executeShortcutAction(matchedAction, sig.token);
         }
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      heldKeyboardTokens.clear();
+      heldMouseTokens.clear();
+      stopAllHoldRepeats();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        heldKeyboardTokens.clear();
+        heldMouseTokens.clear();
+        stopAllHoldRepeats();
       }
     });
 
