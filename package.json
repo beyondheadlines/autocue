@@ -3,11 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "description": "Beyond Headlines // Autocue — Broadcast Teleprompter backed by Neon Postgres",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
-    "build": "echo 'Static frontend + Vercel Serverless API ready'"
+    "dev": "node dev-server.js",
+    "start": "node dev-server.js",
+    "build": "echo 'Static build complete'"
   },
   "engines": {
     "node": ">=18.0.0"

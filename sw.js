@@ -1,9 +1,9 @@
-const CACHE_NAME = 'bh-autocue-v9';
+const CACHE_NAME = 'bh-autocue-v10';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
-  './app.js',
+  './autocue.js',
   './manifest.json',
   './logo.svg',
   './icon.svg',

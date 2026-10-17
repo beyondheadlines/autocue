@@ -1,6 +1,18 @@
 {
   "version": 2,
+  "framework": null,
+  "outputDirectory": ".",
   "cleanUrls": false,
+  "rewrites": [
+    {
+      "source": "/favicon.ico",
+      "destination": "/icon-192.png"
+    },
+    {
+      "source": "/favicon.png",
+      "destination": "/icon-192.png"
+    }
+  ],
   "headers": [
     {
       "source": "/sw.js",
