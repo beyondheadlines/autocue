@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Beyond Headlines Autocue" />
@@ -137,7 +138,7 @@
       <div class="hud-controls-grid">
         <!-- Play / Stop + Reset + Up/Down Nudge -->
         <div class="hud-group hud-group-transport">
-          <button type="button" id="btn-play-pause" class="hud-primary-btn" title="Start / Stop (Press Enter)">
+          <button type="button" id="btn-play-pause" class="hud-primary-btn" title="Start / Stop (Press Enter or Left Click)">
             <span id="play-icon-wrap" class="icon-wrap">
               <svg id="svg-play" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
               <svg id="svg-pause" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" class="hidden"><rect x="5" y="4" width="5" height="16"/><rect x="14" y="4" width="5" height="16"/></svg>
@@ -211,25 +212,22 @@
           </div>
         </div>
 
-        <!-- Mirror & Rig Controls -->
+        <!-- Mirror, Flip, Edit & Fullscreen Controls (Icon-Only in One Line) -->
         <div class="hud-group hud-group-toggles">
-          <button type="button" id="btn-mirror-x" class="hud-toggle-btn" title="Mirror Horizontally for Teleprompter Glass (M)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-            <span>MIRROR X</span>
+          <button type="button" id="btn-mirror-x" class="hud-icon-btn hud-toggle-btn" title="Mirror Horizontally for Teleprompter Glass (M)" aria-label="Mirror Horizontally">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           </button>
 
-          <button type="button" id="btn-mirror-y" class="hud-toggle-btn" title="Flip Vertically (V)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 3 3 7 7 11"/><polyline points="17 21 21 17 17 13"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></svg>
-            <span>FLIP Y</span>
+          <button type="button" id="btn-mirror-y" class="hud-icon-btn hud-toggle-btn" title="Flip Vertically (V)" aria-label="Flip Vertically">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 3 3 7 7 11"/><polyline points="17 21 21 17 17 13"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></svg>
           </button>
 
-          <button type="button" id="btn-open-editor-quick" class="hud-toggle-btn" title="Edit Active Script / Manage Documents (E)">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            <span>EDIT</span>
+          <button type="button" id="btn-open-editor-quick" class="hud-icon-btn hud-toggle-btn" title="Edit Active Script / Manage Documents (E)" aria-label="Edit Script">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           </button>
 
-          <button type="button" id="btn-fullscreen" class="hud-icon-btn" title="Toggle Fullscreen (F)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          <button type="button" id="btn-fullscreen" class="hud-icon-btn hud-toggle-btn" title="Toggle Fullscreen (F)" aria-label="Toggle Fullscreen">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
           </button>
         </div>
       </div>
@@ -412,12 +410,8 @@
       <div class="modal-body">
         <div class="shortcuts-grid">
           <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>Enter</kbd></span>
+            <span class="shortcut-keys"><kbd>Enter</kbd> / <kbd>Left Click</kbd></span>
             <span class="shortcut-desc">Start / Stop teleprompter scrolling</span>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-keys"><kbd>Click / Tap</kbd> while Playing</span>
-            <span class="shortcut-desc">Pause teleprompter scrolling immediately</span>
           </div>
           <div class="shortcut-row">
             <span class="shortcut-keys"><kbd>Tap &amp; Hold</kbd> / <kbd>Tab &amp; Hold</kbd></span>

@@ -932,6 +932,7 @@
   }
 
   function startPrompter() {
+    ensurePwaFullscreen();
     updateLayoutAndShadeMetrics(false);
 
     if (state.maxScroll > 0 && state.scrollOffset >= state.maxScroll - 2) {
@@ -1192,8 +1193,8 @@
 
     // ======================================================================
     // STAGE INTERACTIONS:
-    // 1. When playing: Clicking anywhere on the screen pauses immediately!
-    // 2. When paused: Tap & Hold (420ms) focuses main content player part!
+    // 1. Left Click / Tap on stage: Start / Stop teleprompter (same as Enter)
+    // 2. Tap & Hold (420ms) when paused: Focus main content player part
     // ======================================================================
     let holdTimer = null;
     let pointerStartX = 0;
@@ -1201,6 +1202,7 @@
     let touchScrollStartOffset = 0;
     let isTouchScrollingStage = false;
     let justPausedOnPointerDown = false;
+    let holdTriggered = false;
 
     const clearHoldTimer = () => {
       if (holdTimer) {
@@ -1210,9 +1212,12 @@
     };
 
     dom.prompterStage.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
       if (state.isDraggingShade || e.target.closest('#shade-drag-handle')) return;
 
-      // Requirement: When the script is in play mode, clicking anywhere on screen pauses it
+      ensurePwaFullscreen();
+
+      // When the script is in play mode, left-clicking / tapping anywhere on screen pauses it
       if (state.isPlaying) {
         justPausedOnPointerDown = true;
         clearHoldTimer();
@@ -1221,6 +1226,7 @@
       }
 
       justPausedOnPointerDown = false;
+      holdTriggered = false;
       pointerStartX = e.clientX;
       pointerStartY = e.clientY;
       touchScrollStartOffset = state.targetScrollOffset;
@@ -1230,6 +1236,7 @@
       holdTimer = setTimeout(() => {
         holdTimer = null;
         if (!isTouchScrollingStage && !state.isDraggingShade && !state.isPlaying) {
+          holdTriggered = true;
           toggleMainPlayerFocus();
         }
       }, 420);
@@ -1260,15 +1267,23 @@
     });
 
     dom.prompterStage.addEventListener('click', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
       if (state.justDraggedShade || state.isDraggingShade) return;
       if (e.target.closest('#shade-drag-handle')) return;
       if (justPausedOnPointerDown) {
         justPausedOnPointerDown = false;
         return;
       }
-      if (state.isPlaying) {
-        pausePrompter();
+      if (holdTriggered) {
+        holdTriggered = false;
+        return;
       }
+      if (isTouchScrollingStage) {
+        isTouchScrollingStage = false;
+        return;
+      }
+      // Left click toggles Start / Stop (same as pressing Enter)
+      togglePlay();
     });
 
     window.addEventListener('pointerup', clearHoldTimer);
@@ -1976,11 +1991,56 @@
   /* ========================================================================
      9. UTILITIES
      ======================================================================== */
+  function isRunningAsPwa() {
+    return (
+      window.matchMedia?.('(display-mode: fullscreen)').matches ||
+      window.matchMedia?.('(display-mode: standalone)').matches ||
+      window.matchMedia?.('(display-mode: minimal-ui)').matches ||
+      window.navigator.standalone === true
+    );
+  }
+
+  function requestHardwareFullscreen() {
+    const el = document.documentElement;
+    if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+    if (el.requestFullscreen) {
+      el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+      return true;
+    }
+    if (el.webkitRequestFullscreen) {
+      try {
+        el.webkitRequestFullscreen();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  function ensurePwaFullscreen() {
+    if (isRunningAsPwa()) {
+      requestHardwareFullscreen();
+    }
+  }
+
   function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-    } else {
-      document.exitFullscreen?.().catch(() => {});
+    const isFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    if (!isFs) {
+      const supported = requestHardwareFullscreen();
+      if (!supported) {
+        // Fallback for iOS / standalone PWA where Fullscreen API is unavailable:
+        // toggle full-canvas player focus (hiding top & bottom bars)
+        toggleMainPlayerFocus();
+      }
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      try {
+        document.webkitExitFullscreen();
+      } catch {
+        // Ignore
+      }
     }
   }
 
