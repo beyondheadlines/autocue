@@ -1531,6 +1531,7 @@
   }
 
   function startPrompter() {
+    ensureScreenAwake();
     updateLayoutAndShadeMetrics(false);
 
     if (state.maxScroll > 0 && state.scrollOffset >= state.maxScroll - 2) {
@@ -1545,6 +1546,7 @@
 
   function pausePrompter() {
     state.isPlaying = false;
+    ensureScreenAwake();
     updateTransportUI();
   }
 
@@ -2895,7 +2897,7 @@
   }
 
   /* ========================================================================
-     8. SERVICE WORKER REGISTRATION
+     8. SERVICE WORKER REGISTRATION & ALWAYS-ON SCREEN WAKE LOCK
      ======================================================================== */
   function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
@@ -2905,6 +2907,165 @@
         });
       });
     }
+  }
+
+  // Compact 2-second 16x16 H.264 baseline MP4 for hardware video wake-lock fallback
+  const KEEP_AWAKE_MP4_BASE64 =
+    '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';
+
+  let wakeLockSentinel = null;
+  let wakeLockRequestInFlight = false;
+  let keepAwakeVideo = null;
+  let keepAwakeInitialized = false;
+
+  async function requestNativeScreenWakeLock() {
+    if (document.visibilityState === 'hidden') return false;
+    if (!('wakeLock' in navigator) || typeof navigator.wakeLock?.request !== 'function') {
+      return false;
+    }
+    if (wakeLockSentinel && !wakeLockSentinel.released) {
+      return true;
+    }
+    if (wakeLockRequestInFlight) {
+      return false;
+    }
+
+    wakeLockRequestInFlight = true;
+    try {
+      const sentinel = await navigator.wakeLock.request('screen');
+      wakeLockSentinel = sentinel;
+      sentinel.addEventListener('release', () => {
+        if (wakeLockSentinel === sentinel) {
+          wakeLockSentinel = null;
+        }
+        if (document.visibilityState === 'visible') {
+          setTimeout(ensureScreenAwake, 120);
+        }
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      wakeLockRequestInFlight = false;
+    }
+  }
+
+  function ensureKeepAwakeVideoElement() {
+    if (keepAwakeVideo) return keepAwakeVideo;
+    if (!document.body) return null;
+
+    const video = document.createElement('video');
+    video.setAttribute('muted', '');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('loop', '');
+    video.setAttribute('autoplay', '');
+    video.setAttribute('disablepictureinpicture', '');
+    video.setAttribute('disableremoteplayback', '');
+    video.setAttribute('aria-hidden', 'true');
+    video.setAttribute('tabindex', '-1');
+
+    video.muted = true;
+    video.defaultMuted = true;
+    video.volume = 0;
+    video.loop = true;
+    video.playsInline = true;
+    video.autoplay = true;
+    video.disablePictureInPicture = true;
+    video.disableRemotePlayback = true;
+
+    // Must remain inside the viewport (not display:none / visibility:hidden) so
+    // browser VideoWakeLock engines keep the hardware screen awake.
+    video.style.cssText =
+      'position:fixed;right:0;bottom:0;width:2px;height:2px;opacity:0.001;pointer-events:none;z-index:-1;contain:strict;';
+
+    try {
+      const binary = atob(KEEP_AWAKE_MP4_BASE64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'video/mp4' });
+      video.src = URL.createObjectURL(blob);
+    } catch {
+      video.src = `data:video/mp4;base64,${KEEP_AWAKE_MP4_BASE64}`;
+    }
+
+    video.addEventListener('timeupdate', () => {
+      if (video.currentTime > 1.5) {
+        try {
+          video.currentTime = 0.05;
+        } catch {
+          // Ignore seek errors
+        }
+      }
+    });
+
+    video.addEventListener('pause', () => {
+      if (document.visibilityState === 'visible') {
+        video.play().catch(() => {});
+      }
+    });
+
+    video.addEventListener('ended', () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          video.currentTime = 0;
+        } catch {
+          // Ignore
+        }
+        video.play().catch(() => {});
+      }
+    });
+
+    document.body.appendChild(video);
+    keepAwakeVideo = video;
+    return video;
+  }
+
+  function ensureScreenAwake() {
+    if (document.visibilityState === 'hidden') return;
+
+    requestNativeScreenWakeLock();
+
+    const video = ensureKeepAwakeVideoElement();
+    if (video && video.paused) {
+      video.muted = true;
+      video.play().catch(() => {});
+    }
+  }
+
+  function initAlwaysOnWakeLock() {
+    if (keepAwakeInitialized) return;
+    keepAwakeInitialized = true;
+
+    ensureScreenAwake();
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        ensureScreenAwake();
+      }
+    });
+
+    window.addEventListener('focus', ensureScreenAwake);
+    window.addEventListener('pageshow', ensureScreenAwake);
+    document.addEventListener('fullscreenchange', ensureScreenAwake);
+    document.addEventListener('webkitfullscreenchange', ensureScreenAwake);
+
+    const interactionEvents = [
+      'pointerdown',
+      'touchstart',
+      'mousedown',
+      'keydown',
+      'wheel',
+      'click'
+    ];
+    for (const evt of interactionEvents) {
+      window.addEventListener(evt, ensureScreenAwake, { capture: true, passive: true });
+    }
+
+    // Periodic watchdog so the screen stays on indefinitely even with zero user activity
+    setInterval(ensureScreenAwake, 4000);
   }
 
   /* ========================================================================
@@ -2997,6 +3158,7 @@
      ======================================================================== */
   async function init() {
     clearLegacyLocalStorage();
+    initAlwaysOnWakeLock();
 
     // Responsive default font size before Neon DB settings arrive
     if (window.innerWidth <= 540) {
